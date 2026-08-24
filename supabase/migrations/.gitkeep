@@ -1,0 +1,2 @@
+# Diretório para migrations SQL do Supabase
+# Novas migrations podem ser criadas com: npx supabase migration new <nome_da_migration>
