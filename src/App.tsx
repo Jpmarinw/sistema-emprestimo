@@ -80,6 +80,9 @@ export default function App() {
                         onNavigateToLoanDetail={(id) =>
                             navigateTo("loan-detail", id)
                         }
+                        onNavigateToPersonDetail={(id) =>
+                            navigateTo("person-detail", id)
+                        }
                     />
                 )}
 

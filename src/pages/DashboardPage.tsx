@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { dashboardService, type DashboardMetrics } from '../services/dashboardService'
-import { loansService, type EnrichedLoanSummary } from '../services/loansService'
+import { dashboardService, type DashboardData } from '../services/dashboardService'
 import { StatCard } from '../components/common/StatCard'
-import { StatusBadge } from '../components/common/StatusBadge'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatBRL } from '../utils/money'
@@ -11,15 +9,16 @@ interface DashboardPageProps {
   onNavigateToLoans: () => void
   onNavigateToLoanDetail: (loanId: string) => void
   onNavigateToPeople: () => void
+  onNavigateToPersonDetail: (personId: string) => void
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToLoans,
   onNavigateToLoanDetail,
   onNavigateToPeople,
+  onNavigateToPersonDetail,
 }) => {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [recentLoans, setRecentLoans] = useState<EnrichedLoanSummary[]>([])
+  const [data, setData] = useState<DashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,21 +27,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
     async function fetchData() {
       try {
-        const [metricsRes, loansRes] = await Promise.all([
-          dashboardService.getMetrics(),
-          loansService.listLoansSummary('ALL'),
-        ])
-
+        const res = await dashboardService.getDashboardData()
         if (!active) return
 
-        if (metricsRes.error) {
-          setError(metricsRes.error)
+        if (res.error) {
+          setError(res.error)
         } else {
-          setMetrics(metricsRes.data)
-        }
-
-        if (!loansRes.error) {
-          setRecentLoans(loansRes.data.slice(0, 5))
+          setData(res.data)
         }
       } catch (err: any) {
         if (active) {
@@ -63,28 +54,42 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   }, [])
 
   if (isLoading) {
-    return <LoadingSpinner message="Carregando visão geral do sistema..." />
+    return <LoadingSpinner message="Carregando visão gerencial..." />
   }
 
+  const metrics = data?.metrics
+  const topPending = data?.topPendingLoans || []
+  const recentPayments = data?.recentPayments || []
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* Cabeçalho da Página */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Cabeçalho com Ações Rápidas Mobile/Tablet Friendly */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.875rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-            Dashboard
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+            Visão Geral
           </h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem', fontSize: '0.9rem' }}>
-            Visão consolidada das métricas e fluxo de empréstimos
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.2rem', fontSize: '0.875rem' }}>
+            Resumo gerencial e saúde financeira da carteira
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onNavigateToPeople}>
-            Pessoas
+        <div style={{ display: 'flex', gap: '0.625rem', width: '100%', maxWidth: '340px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ flex: 1 }}
+            onClick={onNavigateToPeople}
+          >
+            👤 Pessoas
           </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onNavigateToLoans}>
-            Empréstimos
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ flex: 1 }}
+            onClick={onNavigateToLoans}
+          >
+            📄 Empréstimos
           </button>
         </div>
       </div>
@@ -95,24 +100,62 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       )}
 
-      {/* Grid de 6 Métricas Principais Solicitadas */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1rem',
-        }}
-      >
+      {/* 1. Card de Destaque: Termômetro da Carteira & Recuperação */}
+      {metrics && metrics.totalLoansCount > 0 ? (
+        <div className="hero-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Taxa de Recuperação do Capital
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-brand-500)', lineHeight: 1 }}>
+                  {metrics.recoveryRate}%
+                </span>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  recebido do total contratado
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span className="badge badge-info">
+                {metrics.activeLoansCount} Ativo(s)
+              </span>
+              <span className="badge badge-success">
+                {metrics.paidLoansCount} Quitado(s)
+              </span>
+            </div>
+          </div>
+
+          {/* Barra de Progresso Visual */}
+          <div>
+            <div className="progress-bar-container">
+              <div
+                className="progress-bar-fill"
+                style={{ width: `${Math.min(100, metrics.recoveryRate)}%` }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>Recebido: {formatBRL(metrics.totalPaid)}</span>
+              <span>Total Contratado: {formatBRL(metrics.totalToReceive)}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 2. Grid de 4 Métricas Financeiras Consolidadas */}
+      <div className="grid-metrics">
         <StatCard
           label="Total Emprestado"
           value={formatBRL(metrics?.totalPrincipal || 0)}
-          subtitle="Capital inicial concedido"
+          subtitle="Capital inicial investido"
         />
         <StatCard
           label="Total a Receber"
           value={formatBRL(metrics?.totalToReceive || 0)}
           highlight="brand"
-          subtitle="Principal + juros contratados"
+          subtitle={`+${formatBRL(metrics?.totalInterest || 0)} em juros`}
         />
         <StatCard
           label="Total Recebido"
@@ -124,85 +167,132 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           label="Saldo Devedor"
           value={formatBRL(metrics?.remainingBalance || 0)}
           highlight={metrics && metrics.remainingBalance > 0 ? 'danger' : 'default'}
-          subtitle="Valor pendente em aberto"
-        />
-        <StatCard
-          label="Empréstimos Ativos"
-          value={metrics?.activeLoansCount || 0}
-          highlight="brand"
-          subtitle="Com saldo em aberto"
-        />
-        <StatCard
-          label="Empréstimos Quitados"
-          value={metrics?.paidLoansCount || 0}
-          highlight="success"
-          subtitle="Totalmente liquidados"
+          subtitle="Valor em aberto na praça"
         />
       </div>
 
-      {/* Empréstimos Recentes */}
-      <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-            Empréstimos Recentes
-          </h2>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={onNavigateToLoans}
-          >
-            Ver Todos
-          </button>
+      {/* 3. Dois Painéis Focados em Gestão (Lado a Lado no Tablet) */}
+      <div className="grid-dashboard-panels">
+        {/* Painel 1: Maiores Saldos Pendentes (Foco em Cobrança) */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                ⚠️ Maiores Saldos Pendentes
+              </h2>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Contratos com maior valor a receber
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={onNavigateToLoans}
+            >
+              Ver Todos
+            </button>
+          </div>
+
+          {topPending.length === 0 ? (
+            <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+              🎉 Nenhum saldo em aberto pendente no momento!
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              {topPending.map((item) => (
+                <div
+                  key={item.loan_id}
+                  className="touch-list-item"
+                  onClick={() => onNavigateToLoanDetail(item.loan_id)}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
+                    <span
+                      style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9375rem' }}
+                      onClick={(e) => {
+                        if (item.person_id) {
+                          e.stopPropagation()
+                          onNavigateToPersonDetail(item.person_id)
+                        }
+                      }}
+                    >
+                      {item.person_name}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Contrato: {item.loan_date} • Pago: {item.progress_percent}%
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 800, color: '#ef4444', fontSize: '1rem' }}>
+                      {formatBRL(item.remaining_balance)}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      de {formatBRL(item.total_amount)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {recentLoans.length === 0 ? (
-          <EmptyState
-            title="Nenhum empréstimo registrado"
-            description="Cadastre uma pessoa e crie o primeiro contrato de empréstimo."
-            actionLabel="Ir para Empréstimos"
-            onAction={onNavigateToLoans}
-          />
-        ) : (
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Data</th>
-                  <th>Principal</th>
-                  <th>Taxa</th>
-                  <th>Total</th>
-                  <th>Recebido</th>
-                  <th>Saldo Devedor</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentLoans.map((loan) => (
-                  <tr
-                    key={loan.loan_id}
-                    className="clickable"
-                    onClick={() => onNavigateToLoanDetail(loan.loan_id)}
-                  >
-                    <td style={{ fontWeight: 600 }}>{loan.person_name}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{loan.loan_date}</td>
-                    <td>{formatBRL(loan.principal_amount)}</td>
-                    <td>{loan.interest_rate}%</td>
-                    <td style={{ fontWeight: 600 }}>{formatBRL(loan.total_amount)}</td>
-                    <td style={{ color: 'var(--color-brand-600)' }}>{formatBRL(loan.total_paid)}</td>
-                    <td style={{ fontWeight: 600, color: loan.remaining_balance > 0 ? '#ef4444' : 'var(--color-brand-600)' }}>
-                      {formatBRL(loan.remaining_balance)}
-                    </td>
-                    <td>
-                      <StatusBadge status={loan.status} isActive={loan.is_active} isPaid={loan.is_paid} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* Painel 2: Últimas Amortizações Recebidas (Extrato de Entradas) */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                💳 Últimos Pagamentos Recebidos
+              </h2>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Entradas recentes de amortizações
+              </span>
+            </div>
           </div>
-        )}
+
+          {recentPayments.length === 0 ? (
+            <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+              Nenhum pagamento registrado ainda.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              {recentPayments.map((payment) => (
+                <div
+                  key={payment.id}
+                  className="touch-list-item"
+                  onClick={() => onNavigateToLoanDetail(payment.loan_id)}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9375rem' }}>
+                      {payment.person_name}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Data: {payment.payment_date}
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 800, color: 'var(--color-brand-600)', fontSize: '1rem' }}>
+                      +{formatBRL(payment.amount)}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-brand-500)', fontWeight: 600 }}>
+                      Amortizado
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {metrics?.totalLoansCount === 0 && (
+        <EmptyState
+          title="Nenhum empréstimo cadastrado"
+          description="Cadastre a primeira pessoa e crie o primeiro contrato para alimentar o dashboard."
+          actionLabel="+ Conceder Primeiro Empréstimo"
+          onAction={onNavigateToLoans}
+        />
+      )}
     </div>
   )
 }
