@@ -1,90 +1,141 @@
-import { isSupabaseConfigured } from './lib/supabase'
+import { useState, useEffect } from "react";
+import { Navbar, type AppView } from "./components/layout/Navbar";
+import { DashboardPage } from "./pages/DashboardPage";
+import { PeoplePage } from "./pages/PeoplePage";
+import { PersonDetailPage } from "./pages/PersonDetailPage";
+import { LoansPage } from "./pages/LoansPage";
+import { LoanDetailPage } from "./pages/LoanDetailPage";
 
 export default function App() {
-  const checkItems = [
-    { label: 'React + TypeScript + Vite', status: 'Ativo', ok: true },
-    {
-      label: 'Supabase Client & Tipagem',
-      status: isSupabaseConfigured ? 'Conectado (.env)' : 'Configurado (Aguardando credenciais reais)',
-      ok: true,
-    },
-    { label: 'Supabase CLI & Migrations', status: 'Inicializado (supabase/migrations)', ok: true },
-    { label: 'Variáveis de Ambiente', status: '.env e .env.example criados', ok: true },
-    { label: 'Compatibilidade GitHub Pages', status: 'Base relativa configurada', ok: true },
-  ]
+    const [currentView, setCurrentView] = useState<AppView>("dashboard");
+    const [selectedPersonId, setSelectedPersonId] = useState<string | null>(
+        null,
+    );
+    const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
 
-  return (
-    <main className="container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <div className="card-glass" style={{ padding: '2.5rem', boxShadow: 'var(--shadow-glow)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <span className="badge badge-success">Etapa 1 Concluída</span>
-              <span className="badge badge-info">Arquitetura Base</span>
-            </div>
-            <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Controle de Empréstimos
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem', fontSize: '0.95rem' }}>
-              Configuração inicial do projeto, tipagem e estrutura de diretórios finalizada com sucesso.
-            </p>
-          </div>
-        </div>
+    // Sincroniza com hash da URL para permitir navegação com histórico do navegador
+    useEffect(() => {
+        const handleHashChange = () => {
+            const hash = window.location.hash.replace("#", "");
+            if (hash.startsWith("person/")) {
+                const id = hash.replace("person/", "");
+                setSelectedPersonId(id);
+                setCurrentView("person-detail");
+            } else if (hash.startsWith("loan/")) {
+                const id = hash.replace("loan/", "");
+                setSelectedLoanId(id);
+                setCurrentView("loan-detail");
+            } else if (hash === "people") {
+                setCurrentView("people");
+            } else if (hash === "loans") {
+                setCurrentView("loans");
+            } else {
+                setCurrentView("dashboard");
+            }
+        };
 
-        <div style={{ display: 'grid', gap: '1rem', marginTop: '1.5rem' }}>
-          {checkItems.map((item, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '1rem 1.25rem',
-                backgroundColor: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--color-brand-500)',
-                    boxShadow: '0 0 8px var(--color-brand-500)',
-                  }}
-                />
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                  {item.label}
-                </span>
-              </div>
-              <span className="badge badge-info" style={{ textTransform: 'none', fontWeight: 500 }}>
-                {item.status}
-              </span>
-            </div>
-          ))}
-        </div>
+        handleHashChange();
+        window.addEventListener("hashchange", handleHashChange);
+        return () => window.removeEventListener("hashchange", handleHashChange);
+    }, []);
 
+    const navigateTo = (view: AppView, id?: string) => {
+        if (view === "person-detail" && id) {
+            setSelectedPersonId(id);
+            window.location.hash = `person/${id}`;
+        } else if (view === "loan-detail" && id) {
+            setSelectedLoanId(id);
+            window.location.hash = `loan/${id}`;
+        } else if (view === "people") {
+            window.location.hash = "people";
+        } else if (view === "loans") {
+            window.location.hash = "loans";
+        } else {
+            window.location.hash = "dashboard";
+        }
+    };
+
+    return (
         <div
-          style={{
-            marginTop: '2rem',
-            padding: '1.25rem',
-            backgroundColor: 'var(--bg-app)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-subtle)',
-          }}
+            style={{
+                minHeight: "100vh",
+                display: "flex",
+                flexDirection: "column",
+                backgroundColor: "var(--bg-app)",
+            }}
         >
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-            Próximos passos planejados:
-          </h3>
-          <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.6' }}>
-            <li>Modelagem relacional e criação das migrations do banco via Supabase CLI.</li>
-            <li>Definição das políticas de segurança (Row Level Security - RLS).</li>
-            <li>Implementação dos serviços de acesso aos dados e interfaces de usuário.</li>
-          </ul>
+            <Navbar
+                currentView={currentView}
+                onNavigate={(view) => navigateTo(view)}
+            />
+
+            <main
+                className="container"
+                style={{ flex: 1, padding: "2rem 1.5rem" }}
+            >
+                {currentView === "dashboard" && (
+                    <DashboardPage
+                        onNavigateToLoans={() => navigateTo("loans")}
+                        onNavigateToPeople={() => navigateTo("people")}
+                        onNavigateToLoanDetail={(id) =>
+                            navigateTo("loan-detail", id)
+                        }
+                    />
+                )}
+
+                {currentView === "people" && (
+                    <PeoplePage
+                        onNavigateToPersonDetail={(id) =>
+                            navigateTo("person-detail", id)
+                        }
+                    />
+                )}
+
+                {currentView === "person-detail" && selectedPersonId && (
+                    <PersonDetailPage
+                        personId={selectedPersonId}
+                        onBack={() => navigateTo("people")}
+                        onNavigateToLoanDetail={(id) =>
+                            navigateTo("loan-detail", id)
+                        }
+                    />
+                )}
+
+                {currentView === "loans" && (
+                    <LoansPage
+                        onNavigateToLoanDetail={(id) =>
+                            navigateTo("loan-detail", id)
+                        }
+                        onNavigateToPersonDetail={(id) =>
+                            navigateTo("person-detail", id)
+                        }
+                    />
+                )}
+
+                {currentView === "loan-detail" && selectedLoanId && (
+                    <LoanDetailPage
+                        loanId={selectedLoanId}
+                        onBack={() => navigateTo("loans")}
+                        onNavigateToPersonDetail={(id) =>
+                            navigateTo("person-detail", id)
+                        }
+                    />
+                )}
+            </main>
+
+            <footer
+                style={{
+                    borderTop: "1px solid var(--border-subtle)",
+                    padding: "1.25rem 1.5rem",
+                    textAlign: "center",
+                    fontSize: "0.8125rem",
+                    color: "var(--text-muted)",
+                    backgroundColor: "var(--bg-surface)",
+                }}
+            >
+                Sistema de Controle de Empréstimos • Interface Minimalista e
+                Segura
+            </footer>
         </div>
-      </div>
-    </main>
-  )
+    );
 }
