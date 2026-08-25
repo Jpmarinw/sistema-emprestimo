@@ -1,0 +1,65 @@
+name: Deploy Frontend no GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Permissões necessárias para publicar no GitHub Pages com OIDC
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Permite apenas um deploy simultâneo para evitar conflitos de versão
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Executar Testes Automatizados
+        run: npm run test
+
+      - name: Compilar Build de Produção
+        env:
+          # Variáveis públicas do Supabase necessárias para o build do frontend
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Configurar Páginas do GitHub
+        uses: actions/configure-pages@v5
+
+      - name: Upload dos Artefatos de Build
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    name: Publicar no GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
