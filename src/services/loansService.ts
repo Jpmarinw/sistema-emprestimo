@@ -7,11 +7,13 @@ import { supabase } from '../lib/supabase'
 import {
   calculateTotalAmount,
   validateLoanCreation,
+  validateLoanUpdate,
   isLoanActive,
   isLoanPaid,
 } from '../domain/financial'
 import type {
   CreateLoanDTO,
+  UpdateLoanDTO,
   LoanRow,
   LoanStatus,
 } from '../domain/types'
@@ -67,6 +69,92 @@ export const loansService = {
       return { data, error: null }
     } catch (err: any) {
       return { data: null, error: err.message || 'Erro inesperado ao calcular valores do empréstimo.' }
+    }
+  },
+
+  /**
+   * Atualiza os dados de um empréstimo existente, recalculando o valor total contratado
+   * e validando a integridade contra amortizações já efetuadas.
+   */
+  async updateLoan(dto: UpdateLoanDTO): Promise<{ data: LoanRow | null; error: string | null }> {
+    if (!dto.id || !dto.id.trim()) {
+      return { data: null, error: 'Identificador do empréstimo é obrigatório.' }
+    }
+
+    try {
+      // 1. Busca os dados atuais do empréstimo para obter o total já amortizado
+      const { data: currentSummary, error: fetchError } = await this.getLoanSummaryById(dto.id)
+      if (fetchError || !currentSummary) {
+        return { data: null, error: fetchError || 'Empréstimo não encontrado para alteração.' }
+      }
+
+      const totalPaid = currentSummary.total_paid || 0
+
+      // 2. Valida os novos valores e impede que o novo total seja menor que as amortizações existentes
+      const validation = validateLoanUpdate(dto, totalPaid)
+      if (!validation.isValid) {
+        return { data: null, error: validation.errors.join(' ') }
+      }
+
+      const calculatedTotal = calculateTotalAmount(dto.principal_amount, dto.interest_rate)
+      const isNowPaid = totalPaid >= calculatedTotal && calculatedTotal > 0
+      const newStatus: LoanStatus = isNowPaid ? 'PAID' : 'ACTIVE'
+
+      // 3. Monta os dados de atualização
+      const payload: Partial<LoanRow> = {
+        principal_amount: dto.principal_amount,
+        interest_rate: dto.interest_rate,
+        total_amount: calculatedTotal,
+        status: newStatus,
+      }
+
+      if (dto.loan_date) {
+        payload.loan_date = dto.loan_date
+      }
+      if (dto.person_id) {
+        payload.person_id = dto.person_id
+      }
+
+      // 4. Executa o update no Supabase
+      const { data, error } = await supabase
+        .from('loans')
+        .update(payload)
+        .eq('id', dto.id)
+        .select()
+        .single()
+
+      if (error) {
+        return { data: null, error: error.message }
+      }
+
+      return { data, error: null }
+    } catch (err: any) {
+      return { data: null, error: err.message || 'Erro inesperado ao atualizar empréstimo.' }
+    }
+  },
+
+  /**
+   * Exclui um empréstimo do sistema.
+   * Por cascade no banco de dados, amortizações associadas são removidas automaticamente.
+   */
+  async deleteLoan(id: string): Promise<{ success: boolean; error: string | null }> {
+    if (!id || !id.trim()) {
+      return { success: false, error: 'Identificador do empréstimo é obrigatório.' }
+    }
+
+    try {
+      const { error } = await supabase
+        .from('loans')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, error: null }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro inesperado ao excluir empréstimo.' }
     }
   },
 

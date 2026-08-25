@@ -9,6 +9,7 @@ import {
   deriveLoanStatus,
   validatePayment,
   validateLoanCreation,
+  validateLoanUpdate,
   validatePersonCreation,
   buildLoanFinancialState,
 } from './financial'
@@ -129,6 +130,61 @@ describe('Validação de Criação de Empréstimo', () => {
     })
     expect(res.isValid).toBe(false)
     expect(res.errors.length).toBe(3)
+  })
+})
+
+describe('Validação de Alteração de Empréstimo (validateLoanUpdate)', () => {
+  it('aprova alteração com dados válidos e sem pagamentos prévios', () => {
+    const res = validateLoanUpdate(
+      {
+        id: 'loan-1',
+        principal_amount: 2000,
+        interest_rate: 15,
+      },
+      0
+    )
+    expect(res.isValid).toBe(true)
+    expect(res.errors).toHaveLength(0)
+  })
+
+  it('rejeita alteração se id estiver vazio ou principal/taxa forem inválidos', () => {
+    const res = validateLoanUpdate(
+      {
+        id: '',
+        principal_amount: 0,
+        interest_rate: -5,
+      },
+      0
+    )
+    expect(res.isValid).toBe(false)
+    expect(res.errors.length).toBe(3)
+  })
+
+  it('rejeita alteração se o novo total contratado for menor que o total já pago', () => {
+    // Principal R$ 500 com 10% = R$ 550 total. Mas já foi pago R$ 600.
+    const res = validateLoanUpdate(
+      {
+        id: 'loan-1',
+        principal_amount: 500,
+        interest_rate: 10,
+      },
+      600
+    )
+    expect(res.isValid).toBe(false)
+    expect(res.errors[0]).toContain('não pode ser inferior ao valor já pago')
+  })
+
+  it('aprova alteração se o novo total contratado for igual ou maior que o total já pago', () => {
+    // Principal R$ 600 com 0% = R$ 600 total. Já pago R$ 600 (exatamente quitado).
+    const res = validateLoanUpdate(
+      {
+        id: 'loan-1',
+        principal_amount: 600,
+        interest_rate: 0,
+      },
+      600
+    )
+    expect(res.isValid).toBe(true)
   })
 })
 

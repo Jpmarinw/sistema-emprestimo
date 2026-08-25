@@ -8,6 +8,7 @@
 import { toCents, fromCents, roundMoney } from '../utils/money'
 import type {
   CreateLoanDTO,
+  UpdateLoanDTO,
   CreatePersonDTO,
   LoanFinancialState,
   LoanStatus,
@@ -82,6 +83,55 @@ export function validateLoanCreation(dto: CreateLoanDTO): LoanValidationResult {
   }
   if (typeof dto.interest_rate !== 'number' || isNaN(dto.interest_rate) || dto.interest_rate < 0) {
     errors.push('A taxa de juros deve ser maior ou igual a zero.')
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  }
+}
+
+/**
+ * 4.1 Validação de Alteração de Empréstimo
+ * Garante que os dados informados sejam válidos e que o novo total contratado não seja
+ * inferior ao montante que já foi amortizado (currentTotalPaid).
+ */
+export function validateLoanUpdate(
+  dto: UpdateLoanDTO,
+  currentTotalPaid: number = 0
+): LoanValidationResult {
+  const errors: string[] = []
+
+  if (!dto.id || !dto.id.trim()) {
+    errors.push('Identificador do empréstimo é obrigatório para alteração.')
+  }
+  if (dto.person_id !== undefined && (!dto.person_id || !dto.person_id.trim())) {
+    errors.push('É obrigatório vincular uma pessoa ao empréstimo.')
+  }
+  if (typeof dto.principal_amount !== 'number' || isNaN(dto.principal_amount) || dto.principal_amount <= 0) {
+    errors.push('O valor emprestado (principal) deve ser maior que zero.')
+  }
+  if (typeof dto.interest_rate !== 'number' || isNaN(dto.interest_rate) || dto.interest_rate < 0) {
+    errors.push('A taxa de juros deve ser maior ou igual a zero.')
+  }
+
+  if (
+    typeof dto.principal_amount === 'number' &&
+    !isNaN(dto.principal_amount) &&
+    dto.principal_amount > 0 &&
+    typeof dto.interest_rate === 'number' &&
+    !isNaN(dto.interest_rate) &&
+    dto.interest_rate >= 0
+  ) {
+    const newTotal = calculateTotalAmount(dto.principal_amount, dto.interest_rate)
+    const paidCents = toCents(currentTotalPaid > 0 ? currentTotalPaid : 0)
+    const newTotalCents = toCents(newTotal)
+
+    if (newTotalCents < paidCents) {
+      errors.push(
+        `O novo valor total contratado (R$ ${roundMoney(newTotal).toFixed(2)}) não pode ser inferior ao valor já pago (R$ ${roundMoney(currentTotalPaid).toFixed(2)}).`
+      )
+    }
   }
 
   return {

@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { loansService, type EnrichedLoanSummary } from '../services/loansService'
 import { paymentsService } from '../services/paymentsService'
+import { peopleService } from '../services/peopleService'
 import { validatePayment } from '../domain/financial'
 import { StatCard } from '../components/common/StatCard'
 import { StatusBadge } from '../components/common/StatusBadge'
 import { Modal } from '../components/common/Modal'
+import { ConfirmModal } from '../components/common/ConfirmModal'
+import { EditLoanModal } from '../components/loans/EditLoanModal'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { formatBRL } from '../utils/money'
-import type { PaymentRow } from '../domain/types'
+import type { PaymentRow, PersonRow } from '../domain/types'
 
 interface LoanDetailPageProps {
   loanId: string
@@ -23,6 +26,7 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
 }) => {
   const [loan, setLoan] = useState<EnrichedLoanSummary | null>(null)
   const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [people, setPeople] = useState<PersonRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,11 +38,17 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
   const [paymentFormError, setPaymentFormError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Modal de Edição e Exclusão
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const loadLoanDetails = async () => {
     try {
-      const [loanRes, paymentsRes] = await Promise.all([
+      const [loanRes, paymentsRes, peopleRes] = await Promise.all([
         loansService.getLoanSummaryById(loanId),
         paymentsService.listPaymentsByLoanId(loanId),
+        peopleService.listPeople(),
       ])
 
       if (loanRes.error || !loanRes.data) {
@@ -49,6 +59,10 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
 
       if (!paymentsRes.error) {
         setPayments(paymentsRes.data)
+      }
+
+      if (!peopleRes.error) {
+        setPeople(peopleRes.data)
       }
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar detalhes do empréstimo.')
@@ -62,9 +76,10 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
 
     async function fetchLoan() {
       try {
-        const [loanRes, paymentsRes] = await Promise.all([
+        const [loanRes, paymentsRes, peopleRes] = await Promise.all([
           loansService.getLoanSummaryById(loanId),
           paymentsService.listPaymentsByLoanId(loanId),
+          peopleService.listPeople(),
         ])
 
         if (!active) return
@@ -77,6 +92,10 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
 
         if (!paymentsRes.error) {
           setPayments(paymentsRes.data)
+        }
+
+        if (!peopleRes.error) {
+          setPeople(peopleRes.data)
         }
       } catch (err: any) {
         if (active) setError(err.message || 'Erro ao carregar detalhes do empréstimo.')
@@ -91,6 +110,25 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
       active = false
     }
   }, [loanId])
+
+  const handleDeleteLoan = async () => {
+    setIsDeleting(true)
+    try {
+      const res = await loansService.deleteLoan(loanId)
+      if (res.error) {
+        setError(res.error)
+        setIsDeleteModalOpen(false)
+      } else {
+        setIsDeleteModalOpen(false)
+        onBack()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao excluir empréstimo.')
+      setIsDeleteModalOpen(false)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const numPayment = parseFloat(paymentAmount) || 0
 
@@ -183,19 +221,37 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
             </h1>
           </div>
 
-          {!loan.is_paid && loan.remaining_balance > 0 && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setPaymentFormError(null)
-                setPaymentAmount(loan.remaining_balance.toString())
-                setIsPaymentModalOpen(true)
-              }}
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsEditModalOpen(true)}
+              title="Editar dados do empréstimo"
             >
-              💳 Registrar Pagamento
+              ✏️ Editar
             </button>
-          )}
+            <button
+              type="button"
+              className="btn btn-danger-outline btn-sm"
+              onClick={() => setIsDeleteModalOpen(true)}
+              title="Excluir este empréstimo"
+            >
+              🗑️ Excluir
+            </button>
+            {!loan.is_paid && loan.remaining_balance > 0 && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setPaymentFormError(null)
+                  setPaymentAmount(loan.remaining_balance.toString())
+                  setIsPaymentModalOpen(true)
+                }}
+              >
+                💳 Registrar Pagamento
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -414,6 +470,42 @@ export const LoanDetailPage: React.FC<LoanDetailPageProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Modal de Edição de Empréstimo */}
+      <EditLoanModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        loan={loan}
+        people={people}
+        onSuccess={async () => {
+          setSuccessMessage('✅ Empréstimo atualizado com sucesso.')
+          await loadLoanDetails()
+        }}
+      />
+
+      {/* Modal de Confirmação de Exclusão */}
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteLoan}
+        title="Excluir Empréstimo"
+        message={
+          <div>
+            <p style={{ marginBottom: '0.75rem' }}>
+              Tem certeza que deseja excluir o empréstimo de <strong>{loan.person_name}</strong> no valor de <strong>{formatBRL(loan.principal_amount)}</strong>?
+            </p>
+            {payments.length > 0 && (
+              <div style={{ padding: '0.75rem', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: 'var(--radius-md)', fontSize: '0.875rem' }}>
+                ⚠️ <strong>Aviso Importante:</strong> Este contrato possui <strong>{payments.length} pagamento(s)</strong> vinculados no total de <strong>{formatBRL(loan.total_paid)}</strong>. Ao excluir, todas as movimentações serão excluídas permanentemente.
+              </div>
+            )}
+          </div>
+        }
+        confirmText="Sim, Excluir Empréstimo"
+        cancelText="Cancelar"
+        isDestructive={true}
+        isLoading={isDeleting}
+      />
     </div>
   )
 }

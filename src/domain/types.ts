@@ -13,6 +13,14 @@ export interface CreateLoanDTO {
   loan_date?: string
 }
 
+export interface UpdateLoanDTO {
+  id: string
+  person_id?: string
+  principal_amount: number
+  interest_rate: number
+  loan_date?: string
+}
+
 export interface RegisterPaymentDTO {
   loan_id: string
   amount: number

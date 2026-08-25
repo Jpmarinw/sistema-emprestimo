@@ -8,9 +8,12 @@ import {
 import { StatCard } from "../components/common/StatCard";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { EditLoanModal } from "../components/loans/EditLoanModal";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { EmptyState } from "../components/common/EmptyState";
 import { formatBRL } from "../utils/money";
+import type { EnrichedLoanSummary } from "../services/loansService";
 
 interface PersonDetailPageProps {
     personId: string;
@@ -26,6 +29,7 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
     const [details, setDetails] = useState<PersonDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
     // Modal de Novo Empréstimo para a pessoa
     const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
@@ -36,6 +40,11 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
     );
     const [isSubmittingLoan, setIsSubmittingLoan] = useState(false);
     const [loanFormError, setLoanFormError] = useState<string | null>(null);
+
+    // Modais de Edição e Exclusão
+    const [editingLoan, setEditingLoan] = useState<EnrichedLoanSummary | null>(null);
+    const [deletingLoan, setDeletingLoan] = useState<EnrichedLoanSummary | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const loadPersonDetails = async () => {
         try {
@@ -130,6 +139,27 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
         }
     };
 
+    const handleDeleteLoan = async () => {
+        if (!deletingLoan) return;
+        setIsDeleting(true);
+        try {
+            const res = await loansService.deleteLoan(deletingLoan.loan_id);
+            if (res.error) {
+                setError(res.error);
+                setDeletingLoan(null);
+            } else {
+                setFeedbackMessage("✅ Empréstimo excluído com sucesso.");
+                setDeletingLoan(null);
+                await loadPersonDetails();
+            }
+        } catch (err: any) {
+            setError(err.message || "Erro ao excluir empréstimo.");
+            setDeletingLoan(null);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     if (isLoading) {
         return <LoadingSpinner message="Carregando dados da pessoa..." />;
     }
@@ -220,6 +250,37 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
                     </button>
                 </div>
             </div>
+
+            {feedbackMessage && (
+                <div
+                    style={{
+                        padding: "0.875rem 1.25rem",
+                        backgroundColor: "#ecfdf5",
+                        color: "#065f46",
+                        border: "1px solid #a7f3d0",
+                        borderRadius: "var(--radius-md)",
+                        fontSize: "0.9rem",
+                        fontWeight: 500,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                    }}
+                >
+                    <span>{feedbackMessage}</span>
+                    <button
+                        type="button"
+                        onClick={() => setFeedbackMessage(null)}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#065f46",
+                        }}
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
 
             {/* Resumo Financeiro da Pessoa */}
             <div
@@ -343,18 +404,42 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
                                             />
                                         </td>
                                         <td style={{ textAlign: "right" }}>
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary btn-sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onNavigateToLoanDetail(
-                                                        loan.loan_id,
-                                                    );
-                                                }}
-                                            >
-                                                Ver Detalhes
-                                            </button>
+                                            <div className="table-actions">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    title="Editar dados do empréstimo"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingLoan(loan);
+                                                    }}
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-danger-outline btn-sm"
+                                                    title="Excluir este empréstimo"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDeletingLoan(loan);
+                                                    }}
+                                                >
+                                                    🗑️
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline btn-sm"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onNavigateToLoanDetail(
+                                                            loan.loan_id,
+                                                        );
+                                                    }}
+                                                >
+                                                    Detalhes
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -402,6 +487,7 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
                                     <th>Total Pago</th>
                                     <th>Saldo Devedor</th>
                                     <th>Status</th>
+                                    <th style={{ textAlign: "right" }}>Ação</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -443,6 +529,44 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
                                                 isActive={loan.is_active}
                                                 isPaid={loan.is_paid}
                                             />
+                                        </td>
+                                        <td style={{ textAlign: "right" }}>
+                                            <div className="table-actions">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    title="Editar dados do empréstimo"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingLoan(loan);
+                                                    }}
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-danger-outline btn-sm"
+                                                    title="Excluir este empréstimo"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDeletingLoan(loan);
+                                                    }}
+                                                >
+                                                    🗑️
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline btn-sm"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onNavigateToLoanDetail(
+                                                            loan.loan_id,
+                                                        );
+                                                    }}
+                                                >
+                                                    Detalhes
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -620,6 +744,54 @@ export const PersonDetailPage: React.FC<PersonDetailPageProps> = ({
                     </div>
                 </form>
             </Modal>
+
+            {/* Modal de Edição de Empréstimo */}
+            <EditLoanModal
+                isOpen={!!editingLoan}
+                onClose={() => setEditingLoan(null)}
+                loan={editingLoan}
+                onSuccess={async () => {
+                    setFeedbackMessage("✅ Empréstimo atualizado com sucesso.");
+                    setEditingLoan(null);
+                    await loadPersonDetails();
+                }}
+            />
+
+            {/* Modal de Confirmação de Exclusão */}
+            <ConfirmModal
+                isOpen={!!deletingLoan}
+                onClose={() => setDeletingLoan(null)}
+                onConfirm={handleDeleteLoan}
+                title="Excluir Empréstimo"
+                message={
+                    <div>
+                        <p style={{ marginBottom: "0.75rem" }}>
+                            Tem certeza que deseja excluir este empréstimo no valor de{" "}
+                            <strong>{formatBRL(deletingLoan?.principal_amount || 0)}</strong> concedido em{" "}
+                            <strong>{deletingLoan?.loan_date}</strong>?
+                        </p>
+                        {deletingLoan && deletingLoan.total_paid > 0 && (
+                            <div
+                                style={{
+                                    padding: "0.75rem",
+                                    backgroundColor: "#fee2e2",
+                                    color: "#991b1b",
+                                    borderRadius: "var(--radius-md)",
+                                    fontSize: "0.875rem",
+                                }}
+                            >
+                                ⚠️ <strong>Aviso Importante:</strong> Este contrato possui{" "}
+                                <strong>{deletingLoan.payments_count} pagamento(s)</strong> vinculados no total de{" "}
+                                <strong>{formatBRL(deletingLoan.total_paid)}</strong>. Ao excluir, todas as movimentações serão excluídas permanentemente.
+                            </div>
+                        )}
+                    </div>
+                }
+                confirmText="Sim, Excluir Empréstimo"
+                cancelText="Cancelar"
+                isDestructive={true}
+                isLoading={isDeleting}
+            />
         </div>
     );
 };

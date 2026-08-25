@@ -86,6 +86,104 @@ describe('Camada de Serviços (Services)', () => {
       expect(result.error).toBeTruthy()
       expect(supabase.from).not.toHaveBeenCalled()
     })
+
+    it('atualiza empréstimo com recálculo correto de total_amount', async () => {
+      // Mock do resumo atual do empréstimo (já pago R$ 200)
+      vi.spyOn(loansService, 'getLoanSummaryById').mockResolvedValue({
+        data: {
+          loan_id: 'loan-1',
+          person_id: 'person-1',
+          person_name: 'Carlos',
+          principal_amount: 1000,
+          interest_rate: 10,
+          total_amount: 1100,
+          total_paid: 200,
+          remaining_balance: 900,
+          payments_count: 1,
+          loan_date: '2026-08-24',
+          status: 'ACTIVE',
+          is_active: true,
+          is_paid: false,
+        },
+        error: null,
+      })
+
+      const mockSingle = vi.fn().mockResolvedValue({
+        data: {
+          id: 'loan-1',
+          person_id: 'person-1',
+          principal_amount: 1200,
+          interest_rate: 10,
+          total_amount: 1320,
+          status: 'ACTIVE',
+        },
+        error: null,
+      })
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle })
+      const mockEq = vi.fn().mockReturnValue({ select: mockSelect })
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq })
+      ;(supabase.from as any).mockReturnValue({ update: mockUpdate })
+
+      const result = await loansService.updateLoan({
+        id: 'loan-1',
+        principal_amount: 1200,
+        interest_rate: 10,
+      })
+
+      expect(result.error).toBeNull()
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          principal_amount: 1200,
+          interest_rate: 10,
+          total_amount: 1320, // 1200 + 10% = 1320
+          status: 'ACTIVE',
+        })
+      )
+      expect(mockEq).toHaveBeenCalledWith('id', 'loan-1')
+    })
+
+    it('bloqueia atualização se novo total for menor que o valor já amortizado', async () => {
+      vi.spyOn(loansService, 'getLoanSummaryById').mockResolvedValue({
+        data: {
+          loan_id: 'loan-1',
+          person_id: 'person-1',
+          person_name: 'Carlos',
+          principal_amount: 1000,
+          interest_rate: 10,
+          total_amount: 1100,
+          total_paid: 800, // Já foi pago R$ 800
+          remaining_balance: 300,
+          payments_count: 2,
+          loan_date: '2026-08-24',
+          status: 'ACTIVE',
+          is_active: true,
+          is_paid: false,
+        },
+        error: null,
+      })
+
+      // Tenta alterar para principal R$ 500 com 10% = R$ 550 total (< R$ 800)
+      const result = await loansService.updateLoan({
+        id: 'loan-1',
+        principal_amount: 500,
+        interest_rate: 10,
+      })
+
+      expect(result.data).toBeNull()
+      expect(result.error).toContain('não pode ser inferior ao valor já pago')
+    })
+
+    it('exclui empréstimo chamando delete no Supabase', async () => {
+      const mockEq = vi.fn().mockResolvedValue({ error: null })
+      const mockDelete = vi.fn().mockReturnValue({ eq: mockEq })
+      ;(supabase.from as any).mockReturnValue({ delete: mockDelete })
+
+      const result = await loansService.deleteLoan('loan-123')
+      expect(result.success).toBe(true)
+      expect(result.error).toBeNull()
+      expect(mockDelete).toHaveBeenCalled()
+      expect(mockEq).toHaveBeenCalledWith('id', 'loan-123')
+    })
   })
 
   describe('paymentsService', () => {
